@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\AttendanceHistory;
+use App\Models\AttendanceRecord;
 use Carbon\Carbon;
 
 class HistoryController extends Controller
@@ -16,29 +17,37 @@ class HistoryController extends Controller
             'month' => 'required|integer|min:1|max:12',
             'year'  => 'required|integer|min:2020|max:2100',
         ]);
+
         $month = $request->month;
         $year  = $request->year;
-        $records = AttendanceHistory::whereMonth('attendancedate', $month)
-            ->whereYear('attendancedate', $year)
-            ->orderBy('attendancedate', 'desc')
+
+        // ✅ FIXED: Updated field name to match migration
+        $records = AttendanceHistory::whereMonth('attendance_date', $month)
+            ->whereYear('attendance_date', $year)
+            ->orderBy('attendance_date', 'desc')
             ->get();
-        $data = $records->map(function($record) {
-            $rate = $record->totalcadets > 0
-                ? round(($record->presentcount + $record->latecount) / $record->totalcadets * 100, 2)
+
+        $weekendDates = $records->map(function($record) {
+            $rate = $record->total_cadets > 0
+                ? round(($record->present_count + $record->late_count) / $record->total_cadets * 100, 2)
                 : 0;
+
             return [
-                'date'          => Carbon::parse($record->attendancedate)->format('Y-m-d'),
-                'dayname'       => Carbon::parse($record->attendancedate)->format('l'),
-                'present'       => $record->presentcount,
-                'late'          => $record->latecount,
-                'absent'        => $record->absentcount,
-                'total'         => $record->totalcadets,
-                'attendancerate'=> $rate
+                'date'           => Carbon::parse($record->attendance_date)->format('Y-m-d'),
+                'dayName'        => Carbon::parse($record->attendance_date)->format('l'),
+                'present'        => $record->present_count,
+                'late'           => $record->late_count,
+                'absent'         => $record->absent_count,
+                'total'          => $record->total_cadets,
+                'attendanceRate' => $rate
             ];
         });
+
         return response()->json([
             'success' => true,
-            'data'    => $data
+            'data'    => [
+                'weekend_dates' => $weekendDates
+            ]
         ]);
     }
 
@@ -47,58 +56,67 @@ class HistoryController extends Controller
     {
         $request->validate([
             'date'   => 'required|date',
+            'status' => 'nullable|string|in:present,late,absent',
         ]);
-        $record = AttendanceHistory::where('attendancedate', $request->date)->first();
-        if (!$record) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No record for this date.'
-            ], 404);
+
+        $date = $request->date;
+        $status = $request->status;
+
+        // Get attendance records for the specific date and status
+        $query = AttendanceRecord::where('date', $date);
+
+        if ($status) {
+            $query->where('status', $status);
         }
-        $rate = $record->totalcadets > 0
-            ? round(($record->presentcount + $record->latecount) / $record->totalcadets * 100, 2)
-            : 0;
+
+        $records = $query->with('cadet')->get();
+
+        $detailedRecords = $records->map(function($record) {
+            return [
+                'cadetId'     => $record->cadet->cadetid ?? 'N/A',
+                'name'        => $record->cadet->name ?? 'N/A',
+                'designation' => $record->cadet->designation ?? 'N/A',
+                'status'      => $record->status,
+                'timestamp'   => $record->check_in_time ?? $record->created_at
+            ];
+        });
+
         return response()->json([
             'success' => true,
             'data'    => [
-                'date'          => $record->attendancedate,
-                'present'       => $record->presentcount,
-                'late'          => $record->latecount,
-                'absent'        => $record->absentcount,
-                'total'         => $record->totalcadets,
-                'attendancerate'=> $rate
+                'records' => $detailedRecords
             ]
         ]);
     }
 
-    // Download history as CSV for given month/year
+    // Download history as CSV for given date
     public function download(Request $request)
     {
         $request->validate([
-            'month' => 'required|integer|min:1|max:12',
-            'year'  => 'required|integer|min:2020|max:2100',
+            'date' => 'required|date',
         ]);
-        $month = $request->month;
-        $year  = $request->year;
-        $records = AttendanceHistory::whereMonth('attendancedate', $month)
-            ->whereYear('attendancedate', $year)
-            ->orderBy('attendancedate', 'asc')
+
+        $date = $request->date;
+
+        $records = AttendanceRecord::where('date', $date)
+            ->with('cadet')
+            ->orderBy('created_at', 'asc')
             ->get();
-        $csv = "Date,Present,Late,Absent,Total,Attendance Rate\n";
+
+        $csv = "Cadet ID,Name,Designation,Status,Timestamp\n";
+
         foreach ($records as $record) {
-            $rate = $record->totalcadets > 0
-                ? round(($record->presentcount + $record->latecount) / $record->totalcadets * 100, 2)
-                : 0;
-            $csv .= sprintf('%s,%d,%d,%d,%d,%.2f\n',
-                $record->attendancedate,
-                $record->presentcount,
-                $record->latecount,
-                $record->absentcount,
-                $record->totalcadets,
-                $rate
+            $csv .= sprintf('"%s","%s","%s","%s","%s"' . "\n",
+                $record->cadet->cadetid ?? 'N/A',
+                $record->cadet->name ?? 'N/A',
+                $record->cadet->designation ?? 'N/A',
+                $record->status,
+                $record->check_in_time ?? $record->created_at
             );
         }
-        $filename = 'history-' . $year . '-' . str_pad($month, 2, '0', STR_PAD_LEFT) . '.csv';
+
+        $filename = 'history-' . $date . '.csv';
+
         return response($csv, 200, [
             'Content-Type'        => 'text/csv',
             'Content-Disposition' => 'attachment; filename=' . $filename,
@@ -115,15 +133,18 @@ class HistoryController extends Controller
             'late'        => 'required|integer',
             'absent'      => 'required|integer',
         ]);
+
+        // ✅ FIXED: Updated field names to match migration
         AttendanceHistory::updateOrCreate(
-            ['attendancedate' => $validated['date']],
+            ['attendance_date' => $validated['date']],
             [
-                'totalcadets'  => $validated['totalcadets'],
-                'presentcount' => $validated['present'],
-                'latecount'    => $validated['late'],
-                'absentcount'  => $validated['absent'],
+                'total_cadets'  => $validated['totalcadets'],
+                'present_count' => $validated['present'],
+                'late_count'    => $validated['late'],
+                'absent_count'  => $validated['absent'],
             ]
         );
+
         return response()->json([
             'success' => true,
             'message' => 'History saved successfully',

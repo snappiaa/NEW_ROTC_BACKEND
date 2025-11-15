@@ -82,7 +82,7 @@ class AttendanceController extends Controller
         ]);
     }
 
-    // Get dashboard statistics
+    // ✅ FIXED: Get dashboard statistics - THIS IS THE KEY FIX
     public function stats()
     {
         $totalCadets = Cadet::count();
@@ -102,6 +102,8 @@ class AttendanceController extends Controller
             'data' => [
                 'totalCadets' => $totalCadets,
                 'presentToday' => $present,
+                'lateToday' => $late,           // ✅ ADDED THIS LINE
+                'absentToday' => $absent,       // ✅ ADDED THIS LINE
                 'attendanceRate' => $attendanceRate
             ]
         ]);
@@ -122,7 +124,7 @@ class AttendanceController extends Controller
             return [
                 'id' => $record->id,
                 'cadetName' => $record->cadet->name,
-                'cadetId' => $record->cadet->cadetid,
+                'cadetId' => $record->cadet->cadet_id,
                 'status' => $record->status,
                 'time' => Carbon::parse($record->timestamp)->format('h:i A')
             ];
@@ -138,14 +140,14 @@ class AttendanceController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'cadetid'        => 'required|string|exists:cadets,cadetid',
+            'cadetid'        => 'required|string|exists:cadets,cadet_id',
             'status'         => 'required|in:present,late,absent',
             'attendancedate' => 'required|date',
             'attendancetime' => 'required',
         ]);
 
         // Already checked in?
-        $existing = AttendanceRecord::where('cadetid', $validated['cadetid'])
+        $existing = AttendanceRecord::where('cadet_id', $validated['cadetid'])
             ->whereDate('timestamp', $validated['attendancedate'])
             ->first();
 
@@ -167,9 +169,11 @@ class AttendanceController extends Controller
         }
 
         $record = AttendanceRecord::create([
-            'cadetid'        => $validated['cadetid'],
-            'status'         => $validated['status'],
-            'timestamp'      => $timestamp,
+            'cadet_id'        => $validated['cadetid'],
+            'status'          => $validated['status'],
+            'timestamp'       => $timestamp,
+            'attendance_date' => $validated['attendancedate'],
+            'attendance_time' => $validated['attendancetime'],
         ]);
 
         return response()->json([
@@ -196,7 +200,7 @@ class AttendanceController extends Controller
             $csv .= sprintf(
                 '%s,%s,%s,%s\n',
                 $record->cadet->name,
-                $record->cadet->cadetid,
+                $record->cadet->cadet_id,
                 ucfirst($record->status),
                 $time
             );

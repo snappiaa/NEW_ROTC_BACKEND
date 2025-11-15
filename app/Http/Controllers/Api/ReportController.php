@@ -57,67 +57,78 @@ class ReportController extends Controller
     }
 
     // Students by status for a specific day
-    public function studentsByStatus(Request $request)
-    {
-        $request->validate([
-            'date'   => 'required|date',
-            'status' => 'required|in:present,late,absent,all',
-            'page'   => 'nullable|integer',
-            'perpage'=> 'nullable|integer',
-        ]);
-        $date = $request->date;
-        $perPage = $request->input('perpage', 30);
-        $query = Cadet::query();
+  public function studentsByStatus(Request $request)
+{
+    $request->validate([
+        'date'   => 'required|date',
+        'status' => 'required|in:present,late,absent,all',
+        'page'   => 'nullable|integer',
+        'perpage'=> 'nullable|integer',
+    ]);
 
-        if ($request->status === 'all') {
-            $cadets = $query->orderBy('cadetid', 'asc')->paginate($perPage);
-            $students = $cadets->map(function ($cadet) use ($date) {
-                $rec = AttendanceRecord::where('cadetid', $cadet->cadetid)->where('attendancedate', $date)->first();
-                return [
-                    'cadetid'     => $cadet->cadetid,
-                    'name'        => $cadet->name,
-                    'designation' => $cadet->designation,
-                    'courseyear'  => $cadet->courseyear,
-                    'status'      => $rec ? $rec->status : 'absent',
-                    'timestamp'   => $rec ? $rec->timestamp : null
-                ];
-            });
-        } elseif ($request->status === 'absent') {
-            $presentIds = AttendanceRecord::where('attendancedate', $date)->pluck('cadetid');
-            $cadets = $query->whereNotIn('cadetid', $presentIds)->orderBy('cadetid', 'asc')->paginate($perPage);
-            $students = $cadets->map(fn($cadet) => [
+    $date = $request->date;
+    $perPage = $request->input('perpage', 30);
+    $query = Cadet::query();
+
+    if ($request->status === 'all') {
+        $cadets = $query->orderBy('cadetid', 'asc')->paginate($perPage);
+        $students = $cadets->map(function ($cadet) use ($date) {
+            $rec = AttendanceRecord::where('cadetid', $cadet->cadetid)
+                ->where('attendancedate', $date)
+                ->first();
+            return [
+                'cadetid'     => $cadet->cadetid,
+                'name'        => $cadet->name,
+                'designation' => $cadet->designation,
+                'courseyear'  => $cadet->courseyear,
+                'status'      => $rec ? $rec->status : 'absent',
+                'timestamp'   => $rec ? $rec->timestamp : null
+            ];
+        });
+    } elseif ($request->status === 'absent') {
+        $presentIds = AttendanceRecord::where('attendancedate', $date)
+            ->pluck('cadetid');
+        $cadets = $query->whereNotIn('cadetid', $presentIds)
+            ->orderBy('cadetid', 'asc')
+            ->paginate($perPage);
+        $students = $cadets->map(function($cadet) {
+            return [
                 'cadetid'     => $cadet->cadetid,
                 'name'        => $cadet->name,
                 'designation' => $cadet->designation,
                 'courseyear'  => $cadet->courseyear,
                 'status'      => 'absent',
                 'timestamp'   => null
-            ]);
-        } else {
-            $records = AttendanceRecord::with('cadet')
-                ->where('attendancedate', $date)
-                ->where('status', $request->status)
-                ->orderBy('timestamp', 'asc')
-                ->paginate($perPage);
-            $students = $records->map(fn($rec) => [
+            ];
+        });
+    } else {
+        $records = AttendanceRecord::with('cadet')
+            ->where('attendancedate', $date)
+            ->where('status', $request->status)
+            ->orderBy('timestamp', 'asc')
+            ->paginate($perPage);
+        $students = $records->map(function($rec) {
+            return [
                 'cadetid'     => $rec->cadet->cadetid ?? null,
                 'name'        => $rec->cadet->name ?? null,
                 'designation' => $rec->cadet->designation ?? null,
                 'courseyear'  => $rec->cadet->courseyear ?? null,
                 'status'      => $rec->status,
                 'timestamp'   => $rec->timestamp,
-            ]);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data'    => [
-                'date'    => $date,
-                'status'  => $request->status,
-                'students'=> $students,
-            ]
-        ]);
+            ];
+        });
     }
+
+    return response()->json([
+        'success' => true,
+        'data'    => [
+            'date'    => $date,
+            'status'  => $request->status,
+            'students'=> $students,
+        ]
+    ]);
+}
+
 
     // Download report as CSV for date range
     public function download(Request $request)

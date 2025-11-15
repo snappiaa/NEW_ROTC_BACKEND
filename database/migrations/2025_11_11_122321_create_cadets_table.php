@@ -12,13 +12,17 @@ return new class extends Migration
             $table->id();
             $table->string('cadet_id', 50)->unique();
             $table->string('name');
-            $table->string('designation');
+            // ✅ CHANGED: Replaced 'designation' with 'company' and 'platoon'
+            $table->enum('company', ['Alpha', 'Bravo', 'Charlie']);
+            $table->enum('platoon', ['1', '2', '3', '4', '5']);
             $table->string('course_year');
             $table->enum('sex', ['Male', 'Female']);
             $table->timestamps();
 
             $table->index('cadet_id');
             $table->index('sex');
+            $table->index('company');  // ✅ NEW
+            $table->index('platoon');  // ✅ NEW
         });
     }
 

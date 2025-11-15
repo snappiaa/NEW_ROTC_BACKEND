@@ -9,23 +9,23 @@ class Cadet extends Model
 {
     use HasFactory;
 
-    // Specify the table name (if different from 'cadets')
     protected $table = 'cadets';
 
-    // Set the primary key to 'cadetid' instead of default 'id'
-    protected $primaryKey = 'cadetid';
+    // ✅ FIXED: Use default 'id' as primary key, not 'cadetid'
+    protected $primaryKey = 'id';
 
-    // If cadetid is not auto-incrementing (like "231-0282"), set this to false
-    public $incrementing = false;
+    // ✅ FIXED: Set back to default auto-incrementing
+    public $incrementing = true;
 
-    // If cadetid is a string (not integer), set the key type
-    protected $keyType = 'string';
+    // ✅ FIXED: Set back to integer
+    protected $keyType = 'int';
 
-    // Allow mass assignment for these fields
+    // ✅ FIXED: Changed 'designation' to 'company' and 'platoon'
     protected $fillable = [
         'cadet_id',
         'name',
-        'designation',
+        'company',      // ✅ CHANGED
+        'platoon',      // ✅ NEW
         'course_year',
         'sex'
     ];
